@@ -64,6 +64,12 @@ Swagger API documentation is available at:
 http://127.0.0.1:5000/docs
 ```
 
+The raw OpenAPI specification is available at:
+
+```text
+http://127.0.0.1:5000/openapi.json
+```
+
 ## API Endpoints
 
 ```text
@@ -90,6 +96,36 @@ Example client payload:
   "program": "Fat Loss",
   "membership_end": "2999-12-31"
 }
+```
+
+## Swagger Documentation
+
+The project includes a Swagger UI page for exploring and testing the API from a browser.
+
+Start the Flask server first:
+
+```bash
+python app.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5000/docs
+```
+
+The Swagger page loads its OpenAPI schema from:
+
+```text
+http://127.0.0.1:5000/openapi.json
+```
+
+The OpenAPI server URL is configured as a relative path (`/`) so the docs work whether the app is opened through `127.0.0.1`, `localhost`, Docker port mapping, or a CI-hosted environment. The Flask app also adds CORS headers to API responses to avoid local Swagger fetch errors.
+
+Do not open the Swagger HTML as a local file. Always access it through the Flask route:
+
+```text
+http://127.0.0.1:5000/docs
 ```
 
 ## Manual Testing
@@ -164,4 +200,6 @@ build: add Docker image configuration
 ci: automate tests and Docker build with GitHub Actions
 ci: add Jenkins build pipeline
 docs: add project setup and pipeline documentation
+docs: add Swagger API documentation page
+fix: allow Swagger requests across local origins
 ```
