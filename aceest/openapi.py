@@ -6,7 +6,7 @@ def build_openapi_spec():
             "version": "1.0.0",
             "description": "No-UI Flask API for gym client, program, and workout management.",
         },
-        "servers": [{"url": "http://127.0.0.1:5000"}],
+        "servers": [{"url": "/"}],
         "paths": {
             "/health": {
                 "get": {

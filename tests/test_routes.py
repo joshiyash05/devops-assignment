@@ -33,7 +33,17 @@ def test_openapi_spec(tmp_path):
 
     assert response.status_code == 200
     assert spec["openapi"] == "3.0.3"
+    assert spec["servers"] == [{"url": "/"}]
     assert "/clients" in spec["paths"]
+
+
+def test_api_responses_include_cors_headers(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert "GET" in response.headers["Access-Control-Allow-Methods"]
 
 
 def test_create_and_fetch_client(tmp_path):
