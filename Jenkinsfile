@@ -1,6 +1,8 @@
 pipeline {
     agent any
-
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
     environment {
         IMAGE_NAME = 'aceest-fitness-api:jenkins'
     }
