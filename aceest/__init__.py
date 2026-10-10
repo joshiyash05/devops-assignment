@@ -18,9 +18,10 @@ def create_app(test_config=None):
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
+    app.teardown_appcontext(close_db)
+    app.register_blueprint(bp)
+
     with app.app_context():
         init_db()
 
-    app.teardown_appcontext(close_db)
-    app.register_blueprint(bp)
     return app
