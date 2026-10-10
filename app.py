@@ -1,22 +1,7 @@
-from flask import Flask, jsonify
+from aceest import create_app
 
 
-app = Flask(__name__)
-
-
-@app.get("/health")
-def health_check():
-    return jsonify({"service": "ACEest Fitness API", "status": "ok"})
-
-
-@app.get("/")
-def index():
-    return jsonify(
-        {
-            "message": "Welcome to ACEest Fitness & Gym API",
-            "endpoints": ["/health"],
-        }
-    )
+app = create_app()
 
 
 if __name__ == "__main__":
