@@ -1,0 +1,13 @@
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+instance/
+*.db
+*.sqlite3
+The code versions for DevOps Assignment/
