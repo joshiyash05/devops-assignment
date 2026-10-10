@@ -5,6 +5,7 @@ pipeline {
     }
     environment {
         IMAGE_NAME = 'aceest-fitness-api:jenkins'
+        DOCKER_AVAILABLE = 'false'
     }
 
     stages {
@@ -43,13 +44,35 @@ pipeline {
             }
         }
 
+        stage('Check Docker Access') {
+            steps {
+                script {
+                    def dockerStatus = sh(
+                        script: 'docker info >/dev/null 2>&1',
+                        returnStatus: true
+                    )
+                    env.DOCKER_AVAILABLE = dockerStatus == 0 ? 'true' : 'false'
+
+                    if (env.DOCKER_AVAILABLE == 'false') {
+                        echo 'Docker is not available to the Jenkins user. Skipping Docker build and containerized tests.'
+                    }
+                }
+            }
+        }
+
         stage('Docker Image Assembly') {
+            when {
+                environment name: 'DOCKER_AVAILABLE', value: 'true'
+            }
             steps {
                 sh 'docker build -t $IMAGE_NAME .'
             }
         }
 
         stage('Containerized Tests') {
+            when {
+                environment name: 'DOCKER_AVAILABLE', value: 'true'
+            }
             steps {
                 sh 'docker run --rm $IMAGE_NAME python -m pytest'
             }

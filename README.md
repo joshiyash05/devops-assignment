@@ -172,6 +172,8 @@ Checkout -> Install Dependencies -> Build and Lint -> Automated Tests -> Docker 
 
 In Jenkins, create a Pipeline job that points to the public GitHub repository. Jenkins will pull the latest code, install dependencies in a clean environment, run validation checks, build the Docker image, and execute the pytest suite inside the container.
 
+The Jenkins pipeline checks Docker access before running Docker stages. If the Jenkins user cannot access the Docker daemon, the pipeline still completes the Python build and pytest validation, then skips Docker image assembly and containerized tests. To run Docker stages in Jenkins, make sure Docker is installed and the Jenkins user has permission to access the Docker socket.
+
 ## GitHub Actions Integration
 
 The workflow in `.github/workflows/main.yml` runs on every push and pull request to `main` or `master`.
