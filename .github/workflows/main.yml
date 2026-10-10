@@ -1,0 +1,40 @@
+name: ACEest Fitness CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-test-container:
+    name: Build, test, and containerize
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+
+      - name: Build and lint Python files
+        run: python -m compileall app.py aceest tests
+
+      - name: Run pytest suite
+        run: python -m pytest
+
+      - name: Build Docker image
+        run: docker build -t aceest-fitness-api:ci .
+
+      - name: Run tests inside Docker image
+        run: docker run --rm aceest-fitness-api:ci python -m pytest
