@@ -15,6 +15,27 @@ def test_health_check(tmp_path):
     assert response.get_json()["status"] == "ok"
 
 
+def test_swagger_docs_page(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert b"SwaggerUIBundle" in response.data
+    assert b"/openapi.json" in response.data
+
+
+def test_openapi_spec(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.get("/openapi.json")
+    spec = response.get_json()
+
+    assert response.status_code == 200
+    assert spec["openapi"] == "3.0.3"
+    assert "/clients" in spec["paths"]
+
+
 def test_create_and_fetch_client(tmp_path):
     client = make_client(tmp_path)
 

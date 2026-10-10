@@ -58,10 +58,18 @@ The app runs on:
 http://127.0.0.1:5000
 ```
 
+Swagger API documentation is available at:
+
+```text
+http://127.0.0.1:5000/docs
+```
+
 ## API Endpoints
 
 ```text
 GET  /health
+GET  /docs
+GET  /openapi.json
 GET  /programs
 GET  /clients
 POST /clients
