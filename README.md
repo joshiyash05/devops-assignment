@@ -182,8 +182,10 @@ The root-level `Jenkinsfile` defines a declarative pipeline with these stages:
 4. **Automated Tests** — run `python -m pytest`.
 5. **Check Docker Access** — check whether the Jenkins agent can connect to its Docker daemon.
 6. **Docker Image Assembly** and **Containerized Tests** — run only when Docker is available.
+7. **Code Inspection** — run SonarScanner using the Jenkins `sonar-token` credential.
+8. **Deploy** — copy the Flask entry point and `aceest` package to `/tmp/aceest-fitness-api` on the Jenkins agent, install dependencies in an isolated virtual environment, and start the API after stopping its previous managed process.
 
-The pipeline polls the configured SCM every two minutes (`H/2 * * * *`) and cleans the Jenkins workspace after each run. Configure a Jenkins Pipeline job to use this repository and its `Jenkinsfile`. The pipeline uses Unix shell commands, so its agent must provide a compatible shell, Python 3, and `venv`. To run the Docker stages, install Docker on the agent and grant the Jenkins user access to the Docker daemon. If Docker is unavailable, the Python compilation and test stages still run, while the Docker stages are skipped.
+The pipeline polls the configured SCM every two minutes (`H/2 * * * *`) and cleans the Jenkins workspace after each run. Configure a Jenkins Pipeline job to use this repository and its `Jenkinsfile`. The pipeline uses Unix shell commands, so its agent must provide a compatible shell, Python 3, `venv`, `ps`, and `curl`. To run the Docker stages, install Docker on the agent and grant the Jenkins user access to the Docker daemon. If Docker is unavailable, the Python compilation and test stages still run, while the Docker stages are skipped. The deployment runs on the Jenkins agent, listens on port `5000`, and stores its SQLite database and logs under `/tmp/aceest-fitness-api`; this is suitable for an assignment/demo agent, not a durable production host.
 
 ### GitHub Actions
 
