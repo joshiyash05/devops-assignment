@@ -199,3 +199,27 @@ The workflow at `.github/workflows/main.yml` runs on pushes and pull requests ta
 6. Run pytest inside the built image.
 
 The GitHub Actions workflow requires the Docker build and containerized test steps to succeed for the job to pass.
+
+## Jenkins Pipeline Proof
+
+The following screenshots document the Jenkins configuration, pipeline execution, SCM polling, and successful deployment of the ACEest Fitness API.
+
+### Successful deployment
+
+![Jenkins deployment completed successfully](Screenshots/JenkinsDeploymentsuccessful.png)
+
+### Pipeline execution
+
+![Jenkins pipeline execution](Screenshots/JenkinsPipelineimage.png)
+
+### Pipeline configuration
+
+![Jenkins pipeline configuration](Screenshots/Jenkinspipline.png)
+
+### SCM polling configuration
+
+![Jenkins SCM polling configuration](Screenshots/Jenkinspoll.png)
+
+### Jenkins changes
+
+![Jenkins changes](Screenshots/JenkinsChanges.png)
