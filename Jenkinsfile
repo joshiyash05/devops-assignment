@@ -77,6 +77,23 @@ pipeline {
                 sh 'docker run --rm $IMAGE_NAME python -m pytest'
             }
         }
+        stage('Code Inspection') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'sonar-token',
+                        variable: 'SONAR_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        export PATH=/opt/sonar-scanner/bin:$PATH
+                        sonar-scanner \
+                            -Dsonar.host.url=http://localhost:9000 \
+                            -Dsonar.token=$SONAR_TOKEN
+                    '''
+                }
+            }
+        }
     }
 
     post {
