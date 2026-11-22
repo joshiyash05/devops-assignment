@@ -168,6 +168,45 @@ The API will then be available at <http://127.0.0.1:5000>. To run the tests insi
 docker run --rm aceest-fitness-api python -m pytest
 ```
 
+## Kubernetes
+
+The manifests in `k8s/base/` deploy the API to the `aceest` namespace behind a
+ClusterIP Service. The Deployment uses Kubernetes rolling updates, HTTP
+readiness/liveness probes, and retains five revisions for rollback.
+
+Build and load the image for a local Minikube cluster, then apply the manifests:
+
+```bash
+docker build -t aceest-fitness-api:latest .
+minikube image load aceest-fitness-api:latest
+kubectl apply -f k8s/base/namespace.yaml
+kubectl apply -f k8s/base/deployment.yaml -f k8s/base/service.yaml
+kubectl -n aceest rollout status deployment/aceest-api
+kubectl -n aceest port-forward service/aceest-api 5000:80
+```
+
+For a registry-backed cluster, use the versioned Docker Hub image instead of
+the local image, for example:
+
+```bash
+kubectl -n aceest set image deployment/aceest-api \
+  aceest-api=docker.io/<dockerhub-user>/aceest-fitness-api:v1.0.0
+kubectl -n aceest rollout status deployment/aceest-api
+```
+
+If an update fails, restore the previous Deployment revision:
+
+```bash
+kubectl -n aceest rollout undo deployment/aceest-api
+kubectl -n aceest rollout status deployment/aceest-api
+```
+
+See `k8s/strategies/` for the blue-green and Istio canary, A/B, and shadow
+examples. These advanced routing examples require Istio to be installed in the
+cluster. The API currently stores data in a per-container SQLite database;
+these manifests are for assignment demonstrations, not durable production
+storage or horizontally scaled writes.
+
 ## CI/CD integrations
 
 Both CI configurations install the Python dependencies, compile the application and tests, run pytest, build the Docker image, and run pytest again inside the image. Docker build and containerized test stages in Jenkins are conditional on Docker being accessible to the Jenkins agent.
