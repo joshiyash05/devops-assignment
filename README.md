@@ -208,13 +208,38 @@ not resources to apply together with it. Replace `aceest-fitness-api:latest`
 with the intended Docker Hub image in each strategy's workload manifest.
 
 - **Blue-green:** Apply
-  `k8s/strategies/blue-green/blue-green.yaml`, update and verify the green
-  Deployment, then switch the Service with `route-green.yaml`. Roll back traffic
-  immediately with `route-blue.yaml`.
-- **Canary:** Install Istio, apply `k8s/strategies/istio/istio-workloads.yaml`,
-  set the stable and candidate Deployment images, then apply `route-canary.yaml`
-  to send 10% of traffic to the candidate. Apply `route-stable.yaml` to roll
-  traffic back to the stable version.
+  `k8s/strategies/blue-green/blue-green.yaml`, set the blue Deployment to the
+  current image and the green Deployment to the candidate image, and verify
+  green before switching the Service. For example:
+
+  ```bash
+  kubectl apply -f k8s/strategies/blue-green/blue-green.yaml
+  kubectl -n aceest-bluegreen set image deployment/aceest-api-blue \
+    aceest-api=docker.io/<dockerhub-user>/aceest-fitness-api:v1.0.0
+  kubectl -n aceest-bluegreen set image deployment/aceest-api-green \
+    aceest-api=docker.io/<dockerhub-user>/aceest-fitness-api:v1.1.0
+  kubectl -n aceest-bluegreen rollout status deployment/aceest-api-green
+  kubectl apply -f k8s/strategies/blue-green/route-green.yaml
+  ```
+
+  Roll back traffic immediately with
+  `kubectl apply -f k8s/strategies/blue-green/route-blue.yaml`.
+- **Canary:** Install Istio and apply
+  `k8s/strategies/istio/istio-workloads.yaml`. Set the stable and candidate
+  Deployment images and verify both rollouts:
+
+  ```bash
+  kubectl -n aceest-istio set image deployment/aceest-api-stable \
+    aceest-api=docker.io/<dockerhub-user>/aceest-fitness-api:v1.0.0
+  kubectl -n aceest-istio set image deployment/aceest-api-candidate \
+    aceest-api=docker.io/<dockerhub-user>/aceest-fitness-api:v1.1.0
+  kubectl -n aceest-istio rollout status deployment/aceest-api-stable
+  kubectl -n aceest-istio rollout status deployment/aceest-api-candidate
+  kubectl apply -f k8s/strategies/istio/route-canary.yaml
+  ```
+
+  The canary route sends 10% of traffic to the candidate. Apply
+  `k8s/strategies/istio/route-stable.yaml` to roll traffic back to stable.
 - **A/B testing:** With the Istio workloads installed and both versions healthy,
   apply `route-ab.yaml`. Requests with `x-experiment: candidate` use the
   candidate; other requests use stable.
@@ -223,30 +248,40 @@ with the intended Docker Hub image in each strategy's workload manifest.
   requests are mirrored, avoiding duplicated writes from this API's POST
   endpoints.
 
-The Istio examples use the host `aceest-api.example.com`; configure DNS or a
-local hosts entry to point it at the Istio ingress gateway. Verify candidate
-health before switching traffic. The API currently stores data in a
-per-container SQLite database; these manifests are for assignment
-demonstrations, not durable production storage or horizontally scaled writes.
+The Docker Hub repository must be public for Kubernetes nodes to pull these
+images without additional image-pull credentials. The Istio examples use the
+host `aceest-api.example.com`; configure DNS or a local hosts entry to point it
+at the Istio ingress gateway. Verify candidate health before switching traffic.
+The API currently stores data in a per-container SQLite database; these
+manifests are for assignment demonstrations, not durable production storage or
+horizontally scaled writes.
 
 ## CI/CD integrations
 
-Both CI configurations install the Python dependencies, compile the application and tests, run pytest, build the Docker image, and run pytest again inside the image. Docker build and containerized test stages in Jenkins are conditional on Docker being accessible to the Jenkins agent.
+Both CI configurations install the Python dependencies, compile the application and tests, run pytest, build the Docker image, and run pytest again inside the image.
 
 ### Jenkins
 
 The root-level `Jenkinsfile` defines a declarative pipeline with these stages:
 
 1. **Checkout** — check out the configured source repository.
-2. **Install Dependencies** — create a virtual environment and install `requirements.txt`.
-3. **Build and Lint** — run `compileall` over the application and tests.
-4. **Automated Tests** — run `python -m pytest`.
-5. **Check Docker Access** — check whether the Jenkins agent can connect to its Docker daemon.
-6. **Docker Image Assembly** and **Containerized Tests** — run only when Docker is available.
-7. **Code Inspection** — run SonarScanner using the Jenkins `sonar-token` credential.
-8. **Deploy** — copy the Flask entry point and `aceest` package to `/tmp/aceest-fitness-api` on the Jenkins agent, install dependencies in an isolated virtual environment, and start the API after stopping its previous managed process.
+2. **Prepare Version** — use the Git `vMAJOR.MINOR.PATCH` tag, or a short commit SHA for untagged builds.
+3. **Install Dependencies** and **Build and Lint** — install `requirements.txt` and run `compileall`.
+4. **Build Docker Image** and **Containerized Tests** — run pytest inside the built image.
+5. **SonarQube Analysis and Quality Gate** — submit the analysis and stop the pipeline if the configured quality gate fails.
+6. **Publish to Docker Hub** — push the versioned image after tests and the quality gate pass.
+7. **Deploy to Kubernetes** — apply `k8s/base/` to the configured cluster, update the image, and wait for rollout; restore the previous Deployment revision when rollout fails.
 
-The pipeline polls the configured SCM every two minutes (`H/2 * * * *`) and cleans the Jenkins workspace after each run. Configure a Jenkins Pipeline job to use this repository and its `Jenkinsfile`. The pipeline uses Unix shell commands, so its agent must provide a compatible shell, Python 3, `venv`, `ps`, and `curl`. To run the Docker stages, install Docker on the agent and grant the Jenkins user access to the Docker daemon. If Docker is unavailable, the Python compilation and test stages still run, while the Docker stages are skipped. The deployment runs on the Jenkins agent, listens on port `5000`, and stores its SQLite database and logs under `/tmp/aceest-fitness-api`; this is suitable for an assignment/demo agent, not a durable production host.
+The pipeline polls the configured SCM every two minutes (`H/2 * * * *`) and cleans the Jenkins workspace after each run. Configure a Jenkins Pipeline job to use this repository and its `Jenkinsfile`. Its Linux agent requires Python 3, Docker, `kubectl`, and the SonarQube Scanner. Install the Jenkins Pipeline, Credentials Binding, SonarQube Scanner, and Workspace Cleanup plugins. Configure a SonarQube server named `SonarQube` and the SonarQube webhook to Jenkins for `waitForQualityGate`. Add Jenkins username/password credentials named `dockerhub-credentials` for your Docker Hub account and a secret-file credential named `kubeconfig` containing credentials for the target cluster. The Docker Hub repository name defaults to `aceest-fitness-api`; ensure it exists under the configured Docker Hub username. The Kubernetes deployment uses the `aceest` namespace and the rolling-update base manifests. The API stores data in a per-container SQLite database, so this is suitable for an assignment/demo and not durable production storage or horizontally scaled writes.
+
+Create and push semantic-version release tags to publish images with the same tag. Untagged builds use a unique short-commit image tag:
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+For example, the Docker Hub images are tagged `v1.0.0` for that release, and `sha-<commit>` for an untagged build. No mutable `latest` tag is used for releases.
 
 ### GitHub Actions
 

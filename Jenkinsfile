@@ -1,17 +1,48 @@
 pipeline {
     agent any
+
     triggers {
         pollSCM('H/2 * * * *')
     }
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
     environment {
-        IMAGE_NAME = 'aceest-fitness-api:jenkins'
-        DOCKER_AVAILABLE = 'false'
+        LOCAL_IMAGE = 'aceest-fitness-api'
+        DOCKERHUB_REPOSITORY = 'aceest-fitness-api'
+        SONARQUBE_SERVER = 'SonarQube'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+
+        stage('Prepare Version') {
+            steps {
+                script {
+                    def gitTag = sh(
+                        script: 'git describe --tags --exact-match HEAD 2>/dev/null || true',
+                        returnStdout: true
+                    ).trim()
+                    def shortCommit = sh(
+                        script: 'git rev-parse --short=7 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    if (gitTag && !(gitTag ==~ /^v\d+\.\d+\.\d+$/)) {
+                        error("Release tag '${gitTag}' must use the vMAJOR.MINOR.PATCH format.")
+                    }
+
+                    env.IMAGE_TAG = gitTag ?: "sha-${shortCommit}"
+                    env.LOCAL_IMAGE_VERSIONED = "${env.LOCAL_IMAGE}:${env.IMAGE_TAG}"
+                }
+                echo "Building image version ${IMAGE_TAG}"
             }
         }
 
@@ -35,122 +66,96 @@ pipeline {
             }
         }
 
-        stage('Automated Tests') {
+        stage('Build Docker Image') {
             steps {
-                sh '''
-                    . .venv/bin/activate
-                    python -m pytest
-                '''
-            }
-        }
-
-        stage('Check Docker Access') {
-            steps {
-                script {
-                    def dockerStatus = sh(
-                        script: 'docker info >/dev/null 2>&1',
-                        returnStatus: true
-                    )
-                    env.DOCKER_AVAILABLE = dockerStatus == 0 ? 'true' : 'false'
-
-                    if (env.DOCKER_AVAILABLE == 'false') {
-                        echo 'Docker is not available to the Jenkins user. Skipping Docker build and containerized tests.'
-                    }
-                }
-            }
-        }
-
-        stage('Docker Image Assembly') {
-            when {
-                environment name: 'DOCKER_AVAILABLE', value: 'true'
-            }
-            steps {
-                sh 'docker build -t $IMAGE_NAME .'
+                sh 'docker build -t "$LOCAL_IMAGE_VERSIONED" .'
             }
         }
 
         stage('Containerized Tests') {
-            when {
-                environment name: 'DOCKER_AVAILABLE', value: 'true'
-            }
             steps {
-                sh 'docker run --rm $IMAGE_NAME python -m pytest'
+                sh 'docker run --rm "$LOCAL_IMAGE_VERSIONED" python -m pytest'
             }
         }
-        stage('Code Inspection') {
+
+        stage('SonarQube Analysis') {
             steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'sonar-token',
-                        variable: 'SONAR_TOKEN'
-                    )
-                ]) {
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
                     sh '''
                         export PATH=/opt/sonar-scanner/bin:$PATH
-                        sonar-scanner \
-                            -Dsonar.host.url=http://localhost:9000 \
-                            -Dsonar.token=$SONAR_TOKEN
+                        sonar-scanner
                     '''
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('SonarQube Quality Gate') {
             steps {
-                echo 'Deploying ACEest Fitness API'
-                sh '''
-                    set -eu
+                timeout(time: 10, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
 
-                    DEPLOY_DIR=/tmp/aceest-fitness-api
-                    mkdir -p "$DEPLOY_DIR/aceest"
-                    cp app.py requirements.txt "$DEPLOY_DIR/"
-                    cp -r aceest/. "$DEPLOY_DIR/aceest/"
+        stage('Publish to Docker Hub') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+                        export DOCKER_CONFIG="$WORKSPACE/.docker"
+                        trap 'docker logout >/dev/null 2>&1 || true' EXIT
+                        registry_image="${DOCKERHUB_USERNAME}/${DOCKERHUB_REPOSITORY}:${IMAGE_TAG}"
+                        echo "$DOCKERHUB_PASSWORD" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+                        docker tag "$LOCAL_IMAGE_VERSIONED" "$registry_image"
+                        docker push "$registry_image"
+                    '''
+                }
+            }
+        }
 
-                    cd "$DEPLOY_DIR"
-                    python3 -m venv .venv
-                    .venv/bin/python -m pip install --upgrade pip
-                    .venv/bin/pip install -r requirements.txt
-
-                    if [ -f app.pid ]; then
-                        old_pid=$(cat app.pid)
-                        if ps -p "$old_pid" -o args= | grep -Fq "$DEPLOY_DIR/.venv/bin/python $DEPLOY_DIR/app.py"; then
-                            kill "$old_pid"
-                            attempt=0
-                            while kill -0 "$old_pid" 2>/dev/null && [ "$attempt" -lt 10 ]; do
-                                sleep 1
-                                attempt=$((attempt + 1))
-                            done
-                            if kill -0 "$old_pid" 2>/dev/null; then
-                                echo "Previous ACEest API process $old_pid did not stop." >&2
-                                exit 1
-                            fi
-                        fi
-                        rm -f app.pid
-                    fi
-
-                    nohup "$DEPLOY_DIR/.venv/bin/python" "$DEPLOY_DIR/app.py" \
-                        > app.log 2>&1 < /dev/null &
-                    app_pid=$!
-                    echo "$app_pid" > app.pid
-
-                    attempt=0
-                    until curl --fail --silent http://127.0.0.1:5000/health >/dev/null; do
-                        if ! kill -0 "$app_pid" 2>/dev/null; then
-                            cat app.log
-                            echo "ACEest API process exited before becoming healthy." >&2
-                            exit 1
-                        fi
-                        if [ "$attempt" -ge 10 ]; then
-                            cat app.log
-                            echo "ACEest API health check failed at http://127.0.0.1:5000/health." >&2
-                            exit 1
-                        fi
-                        sleep 1
-                        attempt=$((attempt + 1))
-                    done
-
-                    echo "ACEest Fitness API is healthy at http://127.0.0.1:5000."
-                '''
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUB_USERNAME',
+                        passwordVariable: 'DOCKERHUB_PASSWORD'
+                    ),
+                    file(
+                        credentialsId: 'kubeconfig',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    script {
+                        try {
+                            sh '''
+                                set -eu
+                                kubectl apply -f k8s/base/namespace.yaml
+                                kubectl apply -f k8s/base/deployment.yaml -f k8s/base/service.yaml
+                                kubectl -n aceest set image deployment/aceest-api \
+                                    aceest-api="docker.io/${DOCKERHUB_USERNAME}/${DOCKERHUB_REPOSITORY}:${IMAGE_TAG}"
+                                kubectl -n aceest rollout status deployment/aceest-api --timeout=180s
+                            '''
+                        } catch (err) {
+                            def rollbackStatus = sh(
+                                script: 'kubectl -n aceest rollout undo deployment/aceest-api',
+                                returnStatus: true
+                            )
+                            if (rollbackStatus != 0) {
+                                echo 'Kubernetes rollout failed, and automatic rollback also failed; inspect the cluster before retrying.'
+                            } else {
+                                echo 'Kubernetes rollout failed; the previous Deployment revision was restored.'
+                            }
+                            throw err
+                        }
+                    }
+                }
             }
         }
     }
