@@ -281,7 +281,12 @@ git tag -a v1.0.0 -m "Release v1.0.0"
 git push origin v1.0.0
 ```
 
-For example, the Docker Hub images are tagged `v1.0.0` for that release, and `sha-<commit>` for an untagged build. No mutable `latest` tag is used for releases.
+Use short-lived feature or fix branches and merge tested changes to the release
+branch before tagging. Configure Jenkins as a Multibranch Pipeline with tag
+discovery enabled, or trigger the tag build explicitly; branch-only SCM polling
+may not discover a tag-only update. For example, the Docker Hub images are
+tagged `v1.0.0` for that release, and `sha-<commit>` for an untagged build. No
+mutable `latest` tag is used for releases.
 
 ### GitHub Actions
 
