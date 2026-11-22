@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aceest-bluegreen
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-api-blue
+  namespace: aceest-bluegreen
+  labels:
+    app: aceest-api
+    color: blue
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: aceest-api
+      color: blue
+  template:
+    metadata:
+      labels:
+        app: aceest-api
+        color: blue
+    spec:
+      containers:
+        - name: aceest-api
+          image: aceest-fitness-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-api-green
+  namespace: aceest-bluegreen
+  labels:
+    app: aceest-api
+    color: green
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: aceest-api
+      color: green
+  template:
+    metadata:
+      labels:
+        app: aceest-api
+        color: green
+    spec:
+      containers:
+        - name: aceest-api
+          image: aceest-fitness-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-api
+  namespace: aceest-bluegreen
+spec:
+  type: ClusterIP
+  selector:
+    app: aceest-api
+    color: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-api
+  namespace: aceest-bluegreen
+spec:
+  type: ClusterIP
+  selector:
+    app: aceest-api
+    color: blue
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

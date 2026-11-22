@@ -1,0 +1,20 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: aceest-api
+  namespace: aceest-istio
+spec:
+  hosts:
+    - aceest-api.example.com
+  gateways:
+    - aceest-api-gateway
+  http:
+    - route:
+        - destination:
+            host: aceest-api
+            subset: stable
+          weight: 100
+        - destination:
+            host: aceest-api
+            subset: candidate
+          weight: 0

@@ -201,11 +201,33 @@ kubectl -n aceest rollout undo deployment/aceest-api
 kubectl -n aceest rollout status deployment/aceest-api
 ```
 
-See `k8s/strategies/` for the blue-green and Istio canary, A/B, and shadow
-examples. These advanced routing examples require Istio to be installed in the
-cluster. The API currently stores data in a per-container SQLite database;
-these manifests are for assignment demonstrations, not durable production
-storage or horizontally scaled writes.
+### Advanced deployment strategies
+
+The manifests under `k8s/strategies/` are alternatives to the base Deployment,
+not resources to apply together with it. Replace `aceest-fitness-api:latest`
+with the intended Docker Hub image in each strategy's workload manifest.
+
+- **Blue-green:** Apply
+  `k8s/strategies/blue-green/blue-green.yaml`, update and verify the green
+  Deployment, then switch the Service with `route-green.yaml`. Roll back traffic
+  immediately with `route-blue.yaml`.
+- **Canary:** Install Istio, apply `k8s/strategies/istio/istio-workloads.yaml`,
+  set the stable and candidate Deployment images, then apply `route-canary.yaml`
+  to send 10% of traffic to the candidate. Apply `route-stable.yaml` to roll
+  traffic back to the stable version.
+- **A/B testing:** With the Istio workloads installed and both versions healthy,
+  apply `route-ab.yaml`. Requests with `x-experiment: candidate` use the
+  candidate; other requests use stable.
+- **Shadow:** Apply `route-shadow.yaml` to serve GET requests from stable and
+  mirror them to the candidate without returning candidate responses. Only GET
+  requests are mirrored, avoiding duplicated writes from this API's POST
+  endpoints.
+
+The Istio examples use the host `aceest-api.example.com`; configure DNS or a
+local hosts entry to point it at the Istio ingress gateway. Verify candidate
+health before switching traffic. The API currently stores data in a
+per-container SQLite database; these manifests are for assignment
+demonstrations, not durable production storage or horizontally scaled writes.
 
 ## CI/CD integrations
 
