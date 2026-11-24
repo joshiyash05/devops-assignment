@@ -10,3 +10,4 @@ instance/
 *.sqlite3
 .env
 The code versions for DevOps Assignment/
+Screenshots/Assignment2/*.png

@@ -325,6 +325,37 @@ kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
   -n aceest rollout status deployment/aceest-api
 ```
 
+### Assignment 2 screenshots
+
+These screenshots show the Jenkins pipeline, Docker Hub image publishing,
+SonarQube quality gate, Jenkins credentials, and successful Minikube rollout.
+The browser/session bar has been redacted in these copies before adding them
+to the README.
+
+#### Jenkins pipeline and Docker
+
+![Successful Jenkins CI/CD pipeline](Screenshots/Assignment2/Public/JenkinsBuildSuccessfulCICDCompleted.png)
+
+![Docker image build in Jenkins](Screenshots/Assignment2/Public/DockerBuildStarted.png)
+
+![Successful Docker Hub image push](Screenshots/Assignment2/Public/Dockerpushsuccessful.png)
+
+![Docker Hub repository and image tag](Screenshots/Assignment2/Public/DockerHubLocationPublic.png)
+
+#### SonarQube quality gate
+
+![SonarScanner analysis running in Jenkins](Screenshots/Assignment2/Public/SonarScannerJenkinsStarted.png)
+
+![SonarScanner quality gate passed](Screenshots/Assignment2/Public/SonarScannerJenkinsSuccessful.png)
+
+![SonarQube project quality gate status](Screenshots/Assignment2/Public/SonarQubeTestpassimage.png)
+
+#### Jenkins credentials and Minikube deployment
+
+![Configured Jenkins credentials with secret values hidden](Screenshots/Assignment2/Public/CredentialsPage.png)
+
+![Successful application deployment and port-forward to Minikube](Screenshots/Assignment2/Public/SuccessfullDeploymentMinikubeProof.png)
+
 </details>
 
 <details>
@@ -639,22 +670,22 @@ The following screenshots document the Jenkins configuration, pipeline execution
 
 ### Successful deployment
 
-![Jenkins deployment completed successfully](Screenshots/JenkinsDeploymentsuccessful.png)
+![Jenkins deployment completed successfully](Screenshots/Assignment1/JenkinsDeploymentsuccessful.png)
 
 ### Pipeline execution
 
-![Jenkins pipeline execution](Screenshots/JenkinsPipelineimage.png)
+![Jenkins pipeline execution](Screenshots/Assignment1/JenkinsPipelineimage.png)
 
 ### Pipeline configuration
 
-![Jenkins pipeline configuration](Screenshots/Jenkinspipline.png)
+![Jenkins pipeline configuration](Screenshots/Assignment1/Jenkinspipline.png)
 
 ### SCM polling configuration
 
-![Jenkins SCM polling configuration](Screenshots/Jenkinspoll.png)
+![Jenkins SCM polling configuration](Screenshots/Assignment1/Jenkinspoll.png)
 
 ### Jenkins changes
 
-![Jenkins changes](Screenshots/JenkinsChanges.png)
+![Jenkins changes](Screenshots/Assignment1/JenkinsChanges.png)
 
 </details>
