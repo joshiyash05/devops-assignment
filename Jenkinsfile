@@ -13,7 +13,6 @@ pipeline {
     environment {
         LOCAL_IMAGE = 'aceest-fitness-api'
         DOCKERHUB_REPOSITORY = 'aceest-fitness-api'
-        SONARQUBE_SERVER = 'SonarQube'
     }
 
     stages {
@@ -78,21 +77,19 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Analysis and Quality Gate') {
             steps {
-                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                withCredentials([
+                    string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
+                ]) {
                     sh '''
                         export PATH=/opt/sonar-scanner/bin:$PATH
-                        sonar-scanner
+                        sonar-scanner \
+                            -Dsonar.host.url=http://localhost:9000 \
+                            -Dsonar.token="$SONAR_TOKEN" \
+                            -Dsonar.qualitygate.wait=true \
+                            -Dsonar.qualitygate.timeout=300
                     '''
-                }
-            }
-        }
-
-        stage('SonarQube Quality Gate') {
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
                 }
             }
         }
