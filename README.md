@@ -1,4 +1,320 @@
-# ACEest Fitness & Gym API
+<details>
+<summary><strong>Assignment 2 — Jenkins CI/CD, Docker Hub, Rocky Linux and Minikube</strong></summary>
+
+This section describes how to prepare a Rocky Linux host for the Assignment 2
+pipeline, create the credentials Jenkins expects, connect Jenkins to local
+SonarQube and Minikube, and run a deployment. Commands below assume Rocky Linux
+9 on an `x86_64` machine and that Jenkins and Minikube run on the same host.
+Adjust repository names, usernames, URLs, and paths to your installation.
+
+> **Important:** Docker access gives a user root-equivalent control of the
+> machine. A Minikube kubeconfig also grants cluster access. Keep both
+> credentials private, do not commit them to Git, and use a dedicated
+> assignment/demo machine.
+
+### What the Jenkins pipeline does
+
+After you configure Jenkins and push code to the configured branch, the
+pipeline checks out the code, derives an image tag from a release Git tag or
+commit SHA, builds the Docker image, runs pytest inside that image, runs
+SonarScanner and waits for the quality gate, pushes the image to Docker Hub, and
+deploys the image using the base rolling-update manifests in `k8s/base/`.
+Blue-green, canary, A/B, and shadow are separate examples in
+`k8s/strategies/`; the current Jenkins pipeline does not deploy those strategies
+automatically.
+
+### 1. Install Docker on Rocky Linux
+
+Install Docker Engine and start it:
+
+```bash
+sudo dnf -y install dnf-plugins-core curl wget git
+sudo dnf config-manager --add-repo \
+  https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf -y install docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo systemctl status docker --no-pager
+```
+
+Add your Minikube login user and the Jenkins service account to the Docker
+group, so both can use the Docker daemon:
+
+```bash
+sudo usermod -aG docker "$USER"
+sudo usermod -aG docker jenkins
+```
+
+Log out and back in for your own group membership to refresh. Restart Jenkins
+to refresh its group membership:
+
+```bash
+sudo systemctl restart jenkins
+```
+
+Verify Docker as your login user:
+
+```bash
+docker run --rm hello-world
+```
+
+If Jenkins runs in a container rather than as the host service, host group
+membership does not automatically give that container Docker access. Configure
+its Docker socket access deliberately and use the correct Jenkins agent for
+the pipeline.
+
+### 2. Install Minikube and kubectl
+
+Install Minikube's RPM and `kubectl`:
+
+```bash
+curl -LO \
+  https://storage.googleapis.com/minikube/releases/latest/minikube-latest.x86_64.rpm
+sudo rpm -Uvh minikube-latest.x86_64.rpm
+
+KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)"
+curl -LO \
+  "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+rm -f minikube-latest.x86_64.rpm kubectl
+
+minikube version
+kubectl version --client
+```
+
+Start Minikube **as your regular login user, not with `sudo`**, using the
+Docker driver:
+
+```bash
+minikube start --driver=docker
+minikube status
+kubectl config get-contexts
+kubectl get nodes
+```
+
+Minikube normally creates the `minikube` kubectl context. Keep the same host
+and Minikube profile running while Jenkins deploys. If your machine is low on
+resources, start with fewer CPUs/memory appropriate for your host, for example
+`minikube start --driver=docker --cpus=2 --memory=3072`.
+
+### 3. Create a Docker Hub repository and access token
+
+The pipeline pushes images to
+`<your-dockerhub-username>/aceest-fitness-api:<version>`.
+
+1. Sign in at [Docker Hub](https://hub.docker.com/).
+2. Create a repository named **`aceest-fitness-api`** under your Docker Hub
+   account. A public repository is the easiest option for Minikube: Kubernetes
+   can pull it without a separate image-pull secret.
+3. Open your Docker Hub account settings, find **Personal access tokens** (or
+   **Security → Personal access tokens**), and choose **Generate new token**.
+4. Give it a recognizable name such as `jenkins-devops`. Grant the permissions
+   needed to push images (**Read & Write** or the equivalent available in the
+   Docker Hub UI), generate the token, and copy it immediately. Treat it like
+   a password; Docker Hub may not show it again.
+5. In Jenkins, store the Docker Hub username and this token together in one
+   **Username with password** credential (steps below). Use your Docker Hub
+   username as the username and the access token—not your account password—as
+   the password.
+
+If the repository must remain private, configure an image-pull secret in the
+`aceest` namespace and attach it to the Deployment's pod spec. The Jenkins
+Docker Hub credential is used to push images; it is not automatically
+available to Kubernetes pods.
+
+### 4. Make a kubeconfig file for Jenkins
+
+Run these commands as the same regular Linux user that started Minikube. The
+`--raw --flatten --minify` options embed the selected context's certificates
+and include only the Minikube context, allowing Jenkins to upload one file:
+
+```bash
+umask 077
+kubectl config view --raw --flatten --minify --context=minikube \
+  > "$HOME/jenkins-minikube.kubeconfig"
+chmod 600 "$HOME/jenkins-minikube.kubeconfig"
+```
+
+Test the exported file before uploading it:
+
+```bash
+KUBECONFIG="$HOME/jenkins-minikube.kubeconfig" kubectl get nodes
+```
+
+This must list the Minikube node successfully. If it does not, check that
+Minikube is running and that `minikube` is the correct context:
+
+```bash
+minikube status
+kubectl config get-contexts
+minikube update-context
+```
+
+Regenerate and retest the kubeconfig after correcting the context. Jenkins
+uses the file credential as the `KUBECONFIG` environment variable when it runs
+`kubectl`.
+
+**Connectivity check:** the Kubernetes API address embedded in the kubeconfig
+must be reachable from the Jenkins agent. If Jenkins is a service directly on
+the same Rocky Linux host, the Minikube Docker-driver address is usually
+reachable from that host. If Jenkins runs in a container or on a different
+machine, do not assume `localhost` or the Minikube address works from there:
+the agent needs network access to the API server. Test `kubectl get nodes`
+from the Jenkins agent using this credential before relying on deployments.
+Do not expose the Kubernetes API publicly just to make Jenkins connect.
+
+### 5. Add credentials in Jenkins
+
+Open Jenkins in a browser and sign in with an administrator account. Go to
+**Manage Jenkins → Credentials → System → Global credentials (unrestricted)
+→ Add Credentials**. Depending on your Jenkins version, the labels may be
+slightly different; add each credential to the global/system store so the
+Pipeline job can use it.
+
+Create these three separate credentials. The credential IDs are case-sensitive
+and must match the Jenkinsfile:
+
+| ID | Kind in Jenkins | Values to enter |
+| --- | --- | --- |
+| `dockerhub-credentials` | **Username with password** | Username: Docker Hub username. Password: Docker Hub personal access token. |
+| `sonar-token` | **Secret text** | Secret: SonarQube user token. |
+| `kubeconfig` | **Secret file** | Upload `jenkins-minikube.kubeconfig` created above. |
+
+#### Docker Hub credential: `dockerhub-credentials`
+
+1. Select **Add Credentials**.
+2. For **Kind**, select **Username with password**.
+3. Enter your Docker Hub username in **Username**.
+4. Paste the Docker Hub personal access token in **Password**. Do not use
+   your normal Docker Hub account password.
+5. Set **ID** to exactly `dockerhub-credentials`.
+6. Optionally enter a description such as `Docker Hub image publishing`.
+7. Leave the domain as **Global** (or the default global domain), then click
+   **Create**.
+
+This is one Jenkins credential containing a username and password/token pair,
+not two separate credentials.
+
+#### SonarQube credential: `sonar-token`
+
+1. Choose **Add Credentials** again.
+2. For **Kind**, select **Secret text**.
+3. Paste your SonarQube user token into **Secret**.
+4. Set **ID** to exactly `sonar-token`.
+5. Optionally add a description, then click **Create**.
+
+The current Jenkinsfile connects SonarScanner to
+`http://localhost:9000`, uses this token, and asks the scanner to wait for the
+quality gate. If SonarQube is not reachable at that address from the agent
+running the scanner, update `sonar.host.url` in the Jenkinsfile to an address
+that is reachable from that agent. This token-based flow does not use a
+Jenkins SonarQube server entry or Jenkins webhook.
+
+To create the token in your local SonarQube UI, sign in, open your user
+profile/account menu, go to **My Account → Security**, create a user token
+(for example, `jenkins-devops`), and copy it when SonarQube displays it. The
+exact menu wording can vary slightly by SonarQube version. Store the token as
+the `sonar-token` Secret text credential; do not put it in this README or
+`sonar-project.properties`.
+
+#### Minikube credential: `kubeconfig`
+
+1. Choose **Add Credentials** again.
+2. For **Kind**, select **Secret file**.
+3. Click **Choose File** and select
+   `jenkins-minikube.kubeconfig` from the machine where the file was created.
+4. Set **ID** to exactly `kubeconfig`.
+5. Optionally add a description such as `Minikube deployment kubeconfig`, then
+   click **Create**.
+
+Do not paste the kubeconfig contents into the repository, Jenkinsfile, or a
+public issue. Keep the local file protected; after Jenkins has stored and
+verified it, remove local copies only if you have a secure recovery process.
+
+### 6. Install Jenkins plugins and prepare the agent
+
+The Jenkins agent that runs this Pipeline needs these commands available:
+
+- `python3` and Python virtual-environment support
+- `docker`, with permission to access the Docker daemon
+- `kubectl`
+- `sonar-scanner` installed at
+  `/opt/sonar-scanner/bin/sonar-scanner` (that path is added by the Jenkinsfile)
+- `git` and a compatible Linux shell
+
+Install/enable the Jenkins **Pipeline**, **Credentials Binding**, and
+**Workspace Cleanup** plugins. No Jenkins SonarQube server configuration or
+SonarQube webhook is needed for the current `sonar-token` scanner-wait flow.
+Make sure your local SonarQube server is up and the quality gate is configured
+there.
+
+If the tools were installed only for your interactive user, Jenkins may not
+find them. Check from the Jenkins agent/account that `docker`, `kubectl`,
+`python3`, and `/opt/sonar-scanner/bin/sonar-scanner` are executable and that
+Jenkins can reach both SonarQube and the Minikube Kubernetes API.
+
+### 7. Create and run the Jenkins Pipeline job
+
+1. In Jenkins, choose **New Item**.
+2. Enter a job name, select **Pipeline**, and click **OK**.
+3. In the job configuration, find **Pipeline**.
+4. Set **Definition** to **Pipeline script from SCM**.
+5. Set **SCM** to **Git** and enter the repository URL, for example
+   `https://github.com/joshiyash05/devops-assignment.git`.
+6. Set **Branch Specifier** to your branch, commonly `*/main`. If the
+   repository is private, select a Jenkins Git credential with repository
+   read access.
+7. Set **Script Path** to `Jenkinsfile`.
+8. Save, then choose **Build Now** for the first run. Open **Console Output**
+   to see which stage succeeds or fails.
+
+The Jenkinsfile polls SCM every two minutes. For release builds, the checked
+out commit must have an exact semantic version tag such as `v1.0.0`; an
+untagged commit receives a `sha-<commit>` image tag. Regular branch jobs may
+not discover a newly pushed Git tag automatically. Configure a Multibranch
+Pipeline with tag discovery or trigger the tag build explicitly.
+
+### 8. Verify the pipeline and deployment
+
+When a build succeeds:
+
+```bash
+docker pull <your-dockerhub-username>/aceest-fitness-api:<image-tag>
+kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
+  -n aceest get deployments,services,pods
+kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
+  -n aceest rollout status deployment/aceest-api
+```
+
+To access the API from the Rocky Linux host:
+
+```bash
+kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
+  -n aceest port-forward service/aceest-api 5000:80
+```
+
+In another terminal, check the health endpoint:
+
+```bash
+curl --fail http://127.0.0.1:5000/health
+```
+
+If a rollout fails, Jenkins attempts to undo it. You can also restore the
+previous Deployment revision manually:
+
+```bash
+kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
+  -n aceest rollout undo deployment/aceest-api
+kubectl --kubeconfig="$HOME/jenkins-minikube.kubeconfig" \
+  -n aceest rollout status deployment/aceest-api
+```
+
+</details>
+
+<details>
+<summary><strong>Assignment 1 — ACEest Fitness &amp; Gym API</strong></summary>
+
+## ACEest Fitness & Gym API
 
 ACEest Fitness & Gym is a small, API-only Flask application built as a DevOps assignment. It provides fitness-program information and lets users manage gym clients and workout logs. The project demonstrates a modular Flask application, automated tests, Docker packaging, and CI with Jenkins and GitHub Actions.
 
@@ -324,3 +640,5 @@ The following screenshots document the Jenkins configuration, pipeline execution
 ### Jenkins changes
 
 ![Jenkins changes](Screenshots/JenkinsChanges.png)
+
+</details>
