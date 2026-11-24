@@ -1,3 +1,19 @@
+# ACEest Fitness & Gym - DevOps CI/CD Assignment
+
+This repository documents the ACEest Fitness & Gym application and its
+two-part DevOps assignment. Together, the two parts demonstrate how an
+application is built, tested, containerized, and delivered through an
+automated CI/CD workflow.
+
+| Assignment part | Focus |
+| --- | --- |
+| **Assignment 1 — Application foundation** | Flask fitness API, project structure, automated tests, and the original development work. |
+| **Assignment 2 — DevOps delivery** | Rocky Linux setup, Jenkins pipeline, Docker Hub, SonarQube quality gate, Minikube/Kubernetes deployment, and deployment strategies. |
+
+Expand an assignment below for its detailed walkthrough. Assignment 1 keeps
+the application and original project information; Assignment 2 explains the
+infrastructure and CI/CD setup used to deliver it.
+
 <details>
 <summary><strong>Assignment 2 — Jenkins CI/CD, Docker Hub, Rocky Linux and Minikube</strong></summary>
 
