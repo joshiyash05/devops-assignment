@@ -5,6 +5,11 @@ two-part DevOps assignment. Together, the two parts demonstrate how an
 application is built, tested, containerized, and delivered through an
 automated CI/CD workflow.
 
+**Hosted service:** [Open the live ACEest Fitness & Gym API](https://5a1e0d1ae2f010.app.lhr.life/)
+
+[Swagger API documentation](https://5a1e0d1ae2f010.app.lhr.life/docs) ·
+[Health check](https://5a1e0d1ae2f010.app.lhr.life/health)
+
 | Assignment part | Focus |
 | --- | --- |
 | **Assignment 1 — Application foundation** | Flask fitness API, project structure, automated tests, and the original development work. |
@@ -331,6 +336,19 @@ These screenshots show the Jenkins pipeline, Docker Hub image publishing,
 SonarQube quality gate, Jenkins credentials, and successful Minikube rollout.
 The browser/session bar has been redacted in these copies before adding them
 to the README.
+
+#### Hosted application
+
+The deployed API is available at
+[https://5a1e0d1ae2f010.app.lhr.life/](https://5a1e0d1ae2f010.app.lhr.life/).
+Open the Swagger UI at
+[https://5a1e0d1ae2f010.app.lhr.life/docs](https://5a1e0d1ae2f010.app.lhr.life/docs)
+or check
+[https://5a1e0d1ae2f010.app.lhr.life/health](https://5a1e0d1ae2f010.app.lhr.life/health).
+
+![Hosted ACEest API response](Screenshots/Assignment2/Public/LiveServiceUrl.png)
+
+![Hosted ACEest Swagger API documentation](Screenshots/Assignment2/Public/LiveSwaggerPage.png)
 
 #### Jenkins pipeline and Docker
 
